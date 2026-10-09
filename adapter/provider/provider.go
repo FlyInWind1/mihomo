@@ -18,6 +18,7 @@ import (
 	"github.com/metacubex/mihomo/component/resource"
 	C "github.com/metacubex/mihomo/constant"
 	P "github.com/metacubex/mihomo/constant/provider"
+	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 
 	"github.com/dlclark/regexp2"
@@ -102,13 +103,16 @@ func (bp *baseProvider) RegisterHealthCheckTask(url string, expectedStatus utils
 
 func (bp *baseProvider) setProxies(proxies []C.Proxy) {
 	bp.mutex.Lock()
-	defer bp.mutex.Unlock()
 	bp.proxies = proxies
 	bp.version += 1
 	bp.healthCheck.setProxies(proxies)
-	if bp.healthCheck.auto() {
+	startCheck := bp.healthCheck.auto()
+	bp.mutex.Unlock()
+	if startCheck {
 		go bp.healthCheck.check()
 	}
+	// A subscription refresh can add a node without going through ApplyConfig.
+	tunnel.ProxiesChangedCallback().Emit(struct{}{})
 }
 
 func (bp *baseProvider) Close() error {

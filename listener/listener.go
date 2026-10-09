@@ -528,6 +528,7 @@ func ReCreateTun(tunConf LC.Tun, tunnel C.Tunnel) {
 		return
 	}
 	tunLister = lister
+	lister.StartTailscale()
 
 	log.Infoln("[TUN] Tun adapter listening at: %s", tunLister.Address())
 }

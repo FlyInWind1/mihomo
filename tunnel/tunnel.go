@@ -68,6 +68,9 @@ var (
 	sniffingEnable    = false
 
 	ruleUpdateCallback = utils.NewCallback[P.RuleProvider]()
+	// Fired after ApplyConfig installs a proxy set, and after a proxy provider
+	// replaces its list. The proxy set is already visible when a listener runs.
+	proxiesChangedCallback = utils.NewCallback[struct{}]()
 )
 
 type tunnel struct{}
@@ -130,6 +133,12 @@ func (t tunnel) RuleProviders() map[string]P.RuleProvider {
 
 func (t tunnel) RuleUpdateCallback() *utils.Callback[P.RuleProvider] {
 	return ruleUpdateCallback
+}
+
+// ProxiesChangedCallback runs after the proxies a config apply or a provider
+// refresh installed are visible from Proxies and Providers.
+func ProxiesChangedCallback() *utils.Callback[struct{}] {
+	return proxiesChangedCallback
 }
 
 func OnSuspend() {

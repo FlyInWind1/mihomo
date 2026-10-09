@@ -17,6 +17,7 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/iface/anet"
 	"github.com/metacubex/mihomo/component/resolver"
+	"github.com/metacubex/mihomo/component/tailnet"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/log"
@@ -49,6 +50,12 @@ type Tailscale struct {
 	serverStarted bool
 
 	unregisterDNSResolver func()
+
+	// bridge is set only on Android. It hands this node's tailnet packets to
+	// the VPN tun and takes the replies back, because the process cannot own
+	// a second VpnService.
+	bridge *tailnet.Bridge
+	device *tailnetDevice
 }
 
 type TailscaleOption struct {
@@ -177,6 +184,11 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 			log.Debugln("[Tailscale](%s) %s", option.Name, fmt.Sprintf(format, args...))
 		},
 	}
+	if runtime.GOOS == "android" {
+		outbound.bridge = tailnet.NewBridge(option.Name)
+		outbound.device = newTailnetDevice(outbound.bridge)
+		outbound.server.Tun = outbound.device
+	}
 	dnsTransport := tailscaleDNSTransport{tailscale: outbound}
 	outbound.dnsResolver = dns.NewResolverFromClient(dnsTransport)
 	outbound.unregisterDNSResolver = dns.RegisterTailscaleDnsClient(option.Name, dnsTransport)
@@ -203,6 +215,12 @@ func (t *Tailscale) start() error {
 	return t.startErr
 }
 
+// StartForInbound brings the node up so tailnet peers can reach listeners on
+// the host. Dialing does the same work; this is for when the VPN comes up first.
+func (t *Tailscale) StartForInbound() error {
+	return t.start()
+}
+
 func (t *Tailscale) ensureStarted(ctx context.Context) error {
 	if err := t.start(); err != nil {
 		return err
@@ -224,6 +242,7 @@ func (t *Tailscale) watchBackendState() {
 	defer watcher.Close()
 
 	backendInitialized := false
+	exitNodeApplied := false
 	exitNodeNeedsStatus := tailscaleExitNodeNeedsStatus(t.option)
 	for {
 		n, err := watcher.Next()
@@ -231,6 +250,7 @@ func (t *Tailscale) watchBackendState() {
 			t.setBackendInitialized(err)
 			return
 		}
+		t.publishAddresses()
 		if n.State == nil {
 			continue
 		}
@@ -238,17 +258,32 @@ func (t *Tailscale) watchBackendState() {
 		if *n.State != ipn.NoState && !backendInitialized {
 			t.setBackendInitialized(nil)
 			backendInitialized = true
-			if !exitNodeNeedsStatus {
-				return
-			}
 		}
-		if exitNodeNeedsStatus && *n.State == ipn.Running {
+		if exitNodeNeedsStatus && !exitNodeApplied && *n.State == ipn.Running {
+			exitNodeApplied = true
 			if err := t.applyExitNodePrefs(t.ctx); err != nil {
 				log.Warnln("[Tailscale](%s) set exit node failed: %v", t.Name(), err)
 			}
-			return
 		}
 	}
+}
+
+func (t *Tailscale) publishAddresses() {
+	if t.bridge == nil || t.server == nil {
+		return
+	}
+	v4, v6 := t.server.TailscaleIPs()
+	addrs := make([]netip.Addr, 0, 2)
+	if v4.IsValid() && !v4.IsUnspecified() {
+		addrs = append(addrs, v4)
+	}
+	if v6.IsValid() && !v6.IsUnspecified() {
+		addrs = append(addrs, v6)
+	}
+	if len(addrs) == 0 {
+		return
+	}
+	t.bridge.SetAddresses(addrs)
 }
 
 func (t *Tailscale) setBackendInitialized(err error) {
@@ -472,6 +507,9 @@ func (t *Tailscale) Close() error {
 	t.startOnce.Do(func() {
 		t.startErr = errors.New("tailscale outbound closed")
 	})
+	if t.device != nil {
+		_ = t.device.Close()
+	}
 	if t.server != nil && t.serverStarted { // tsnet.Server.Close() must not be called before or concurrently with Start.
 		return t.server.Close()
 	}

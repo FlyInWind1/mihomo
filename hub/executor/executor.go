@@ -120,6 +120,9 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	updateUpdater(cfg)
 
 	resolver.ResetConnection()
+	// After loadProvider, so a Tailscale node that arrived with this apply —
+	// inline or from a provider — is already reachable from the tunnel.
+	tunnel.ProxiesChangedCallback().Emit(struct{}{})
 }
 
 func initInnerTcp() {

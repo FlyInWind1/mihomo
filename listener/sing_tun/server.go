@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
+	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/iface"
 	"github.com/metacubex/mihomo/component/resolver"
@@ -22,6 +23,7 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
 	"github.com/metacubex/mihomo/log"
+	mihomoTunnel "github.com/metacubex/mihomo/tunnel"
 	"golang.org/x/exp/constraints"
 
 	tun "github.com/metacubex/sing-tun"
@@ -58,6 +60,7 @@ type Listener struct {
 	cDialerInterfaceFinder dialer.InterfaceFinder
 
 	ruleUpdateCallbackCloser io.Closer
+	proxiesChangedCloser     io.Closer
 	ruleUpdateMutex          sync.Mutex
 	routeAddressMap          map[string]*netipx.IPSet
 	routeExcludeAddressMap   map[string]*netipx.IPSet
@@ -482,6 +485,7 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		err = E.Cause(err, "configure tun interface")
 		return
 	}
+	tunIf = prepareTailnetTun(tunIf)
 
 	l.dnsServerIp = dnsServerIp
 	// after tun.New sing-tun has set DNS to TUN interface
@@ -547,6 +551,20 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 	l.addrStr = fmt.Sprintf("%s(%s,%s), mtu: %d, auto route: %v, auto redir: %v, ip stack: %s, dns mode: %s",
 		tunName, tunOptions.Inet4Address, tunOptions.Inet6Address, tunMTU, options.AutoRoute, options.AutoRedirect, options.Stack, options.DNSMode)
 	return
+}
+
+// StartTailscale brings up every Tailscale node and repeats that when the
+// proxy set changes, until Close. Call it only after the listener is the one
+// in service: on Android the first dial has to wait until socket protection
+// is armed, which happens after New returns.
+func (l *Listener) StartTailscale() {
+	if l.proxiesChangedCloser != nil {
+		return
+	}
+	l.proxiesChangedCloser = mihomoTunnel.ProxiesChangedCallback().Register(func(struct{}) {
+		outbound.EnsureTailscaleInbound()
+	})
+	go outbound.EnsureTailscaleInbound()
 }
 
 func (l *Listener) ruleUpdateCallback(ruleProvider P.RuleProvider) {
@@ -678,6 +696,7 @@ func (l *Listener) Close() error {
 		dialer.DefaultInterfaceFinder.CompareAndSwap(l.cDialerInterfaceFinder, nil)
 	}
 	return common.Close(
+		l.proxiesChangedCloser,
 		l.ruleUpdateCallbackCloser,
 		l.tunStack,
 		l.tunIf,

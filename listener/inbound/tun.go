@@ -171,6 +171,7 @@ func (t *Tun) Listen(tunnel C.Tunnel) error {
 	if err != nil {
 		return err
 	}
+	t.l.StartTailscale()
 	log.Infoln("Tun[%s] proxy listening at: %s", t.Name(), t.Address())
 	return nil
 }
