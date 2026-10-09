@@ -4,25 +4,33 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/metacubex/mihomo/common/orderedmap"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/loopback"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/dns"
 )
 
 type Direct struct {
 	*Base
-	loopBack *loopback.Detector
+	loopBack         *loopback.Detector
+	nameserverPolicy *dns.Resolver
 }
 
 type DirectOption struct {
 	BasicOption
-	Name string `proxy:"name"`
+	Name             string                              `proxy:"name"`
+	NameServerPolicy *orderedmap.OrderedMap[string, any] `proxy:"nameserver-policy,omitempty"`
 }
 
 // DialContext implements C.ProxyAdapter
 func (d *Direct) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
 	if err := d.loopBack.CheckConn(metadata); err != nil {
+		return nil, err
+	}
+	metadata, err := d.metadataForNameserverPolicy(ctx, metadata)
+	if err != nil {
 		return nil, err
 	}
 	opts := d.DialOptions()
@@ -50,6 +58,9 @@ func (d *Direct) ListenPacketContext(ctx context.Context, metadata *C.Metadata) 
 }
 
 func (d *Direct) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
+	if replaced, err := d.applyNameserverPolicy(ctx, metadata); err != nil || replaced {
+		return err
+	}
 	if (!metadata.Resolved() || resolver.DirectHostResolver != resolver.DefaultResolver) && metadata.Host != "" {
 		ip, err := resolveIPWithResolver(resolver.WithInitiator(ctx, resolver.InitiatorDirect), metadata.Host, d.prefer, resolver.DirectHostResolver)
 		if err != nil {
@@ -64,7 +75,11 @@ func (d *Direct) IsL3Protocol(metadata *C.Metadata) bool {
 	return true // tell DNSDialer don't send domain to DialContext, avoid lookback to DefaultResolver
 }
 
-func NewDirectWithOption(option DirectOption) *Direct {
+func NewDirectWithOption(option DirectOption) (*Direct, error) {
+	policy, err := buildDirectNameserverPolicy(option.Name, option.NameServerPolicy)
+	if err != nil {
+		return nil, err
+	}
 	return &Direct{
 		Base: NewBase(BaseOption{
 			Name:         option.Name,
@@ -77,8 +92,9 @@ func NewDirectWithOption(option DirectOption) *Direct {
 			RoutingMark:  option.RoutingMark,
 			Prefer:       option.IPVersion,
 		}),
-		loopBack: loopback.NewDetector(),
-	}
+		loopBack:         loopback.NewDetector(),
+		nameserverPolicy: policy,
+	}, nil
 }
 
 func NewDirect() *Direct {

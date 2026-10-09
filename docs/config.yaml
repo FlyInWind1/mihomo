@@ -1763,6 +1763,19 @@ proxies: # socks5
     type: direct
     interface-name: en1
     routing-mark: 6667
+
+  # 格式与 dns.nameserver-policy 相同，值是 DNS 服务器，不是目标地址。
+  # 例如 192.168.1.2 表示向 192.168.1.2:53 查询。
+  # 仅在该 direct 拨号时生效，命中后优先于 dns.nameserver-policy 和 direct-nameserver。
+  # hosts 仍然先于任何 nameserver-policy。
+  # 域名要留在 Host 上才会按节点重新查询：fake-ip，或入站请求本身携带域名。
+  - name: DIRECT-Private
+    type: direct
+    nameserver-policy:
+      "nas.example.com": 192.168.1.2
+      "+.lan":
+        - tls://192.168.1.2:853
+        - system
 proxy-groups:
   # url-test 将按照 url 测试结果使用延迟最低节点
   - name: "auto"

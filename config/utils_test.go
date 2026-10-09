@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 
+	"github.com/metacubex/mihomo/adapter"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -134,7 +136,7 @@ func TestValidateDialerProxies(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.testName, func(t *testing.T) {
-			config := RawConfig{Proxy: testCase.proxy}
+			config := RawConfig{Proxy: adapter.ProxyMappings(testCase.proxy)}
 			// repeat so that different map iteration orders are covered
 			for i := 0; i < 20; i++ {
 				_, _, err := parseProxies(&config)

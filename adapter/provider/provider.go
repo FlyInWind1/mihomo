@@ -30,7 +30,7 @@ const (
 )
 
 type ProxySchema struct {
-	Proxies []map[string]any `yaml:"proxies"`
+	Proxies adapter.ProxyMappings `yaml:"proxies"`
 }
 
 type providerForApi struct {
@@ -195,7 +195,7 @@ func NewProxySetProvider(name string, interval time.Duration, payload []map[stri
 	}
 
 	if len(payload) > 0 { // using as fallback proxies
-		ps := ProxySchema{Proxies: payload}
+		ps := ProxySchema{Proxies: adapter.ProxyMappings(payload)}
 		buf, err := yaml.Marshal(ps)
 		if err != nil {
 			return nil, err
@@ -263,7 +263,7 @@ func (ip *inlineProvider) Update() error {
 }
 
 func NewInlineProvider(name string, payload []map[string]any, parser resource.Parser[[]C.Proxy], hc *HealthCheck) (*InlineProvider, error) {
-	ps := ProxySchema{Proxies: payload}
+	ps := ProxySchema{Proxies: adapter.ProxyMappings(payload)}
 	buf, err := yaml.Marshal(ps)
 	if err != nil {
 		return nil, err
@@ -390,7 +390,7 @@ func NewProxiesParser(pdName string, tunnel C.Tunnel, filter string, excludeFilt
 			if err1 != nil {
 				return nil, fmt.Errorf("%w, %w", err, err1)
 			}
-			schema.Proxies = proxies
+			schema.Proxies = adapter.ProxyMappings(proxies)
 		}
 
 		if schema.Proxies == nil {

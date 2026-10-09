@@ -451,7 +451,7 @@ type RawConfig struct {
 
 	ProxyProvider map[string]map[string]any `yaml:"proxy-providers" json:"proxy-providers"`
 	RuleProvider  map[string]map[string]any `yaml:"rule-providers" json:"rule-providers"`
-	Proxy         []map[string]any          `yaml:"proxies" json:"proxies"`
+	Proxy         adapter.ProxyMappings     `yaml:"proxies" json:"proxies"`
 	ProxyGroup    []map[string]any          `yaml:"proxy-groups" json:"proxy-groups"`
 	Rule          []string                  `yaml:"rules" json:"rule"`
 	SubRules      map[string][]string       `yaml:"sub-rules" json:"sub-rules"`
@@ -497,7 +497,7 @@ func DefaultRawConfig() *RawConfig {
 		LogLevel:          log.INFO,
 		Hosts:             map[string]any{},
 		Rule:              []string{},
-		Proxy:             []map[string]any{},
+		Proxy:             adapter.ProxyMappings{},
 		ProxyGroup:        []map[string]any{},
 		TCPConcurrent:     false,
 		FindProcessMode:   process.FindProcessStrict,
@@ -675,6 +675,17 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 	}
 	config.TLS = tlsCfg
 
+	log.Infoln("Geodata Loader mode: %s", geodata.LoaderName())
+	log.Infoln("Geosite Matcher implementation: %s", geodata.SiteMatcherName())
+	ruleProviders, err := parseRuleProviders(rawCfg)
+	if err != nil {
+		return nil, err
+	}
+	config.RuleProviders = ruleProviders
+	directPolicyRuleProviders = ruleProviders
+	directPolicyRespectRules = rawCfg.DNS.RespectRules
+	directPolicyPreferH3 = rawCfg.DNS.PreferH3
+
 	proxies, providers, err := parseProxies(rawCfg)
 	if err != nil {
 		return nil, err
@@ -687,14 +698,6 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 		return nil, err
 	}
 	config.Listeners = listeners
-
-	log.Infoln("Geodata Loader mode: %s", geodata.LoaderName())
-	log.Infoln("Geosite Matcher implementation: %s", geodata.SiteMatcherName())
-	ruleProviders, err := parseRuleProviders(rawCfg)
-	if err != nil {
-		return nil, err
-	}
-	config.RuleProviders = ruleProviders
 
 	subRules, err := parseSubRules(rawCfg, proxies, ruleProviders)
 	if err != nil {
@@ -1309,9 +1312,18 @@ func parseNameServer(servers []string, respectRules bool, preferH3 bool) ([]dns.
 	return nameservers, nil
 }
 
+var (
+	directPolicyRuleProviders map[string]P.RuleProvider
+	directPolicyRespectRules  bool
+	directPolicyPreferH3      bool
+)
+
 func init() {
 	dns.ParseNameServer = func(servers []string) ([]dns.NameServer, error) { // using by wireguard
 		return parseNameServer(servers, false, false)
+	}
+	dns.ParseNameServerPolicy = func(raw *orderedmap.OrderedMap[string, any], adapterName string) ([]dns.Policy, error) {
+		return parseNameServerPolicy(raw, adapterName, directPolicyRuleProviders, directPolicyRespectRules, directPolicyPreferH3)
 	}
 }
 

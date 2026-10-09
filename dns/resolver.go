@@ -8,6 +8,7 @@ import (
 
 	"github.com/metacubex/mihomo/common/arc"
 	"github.com/metacubex/mihomo/common/lru"
+	"github.com/metacubex/mihomo/common/orderedmap"
 	"github.com/metacubex/mihomo/common/singleflight"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/trie"
@@ -260,6 +261,16 @@ func (r *Resolver) exchangeWithoutCache(ctx context.Context, m *D.Msg) (msg *D.M
 	}
 
 	return
+}
+
+// PolicyMatched reports whether nameserver-policy has servers for host.
+func (r *Resolver) PolicyMatched(host string) bool {
+	if r == nil || host == "" || len(r.policy) == 0 {
+		return false
+	}
+	msg := &D.Msg{}
+	msg.SetQuestion(D.Fqdn(host), D.TypeA)
+	return len(r.matchPolicy(msg)) > 0
 }
 
 func (r *Resolver) matchPolicy(m *D.Msg) []dnsClient {
@@ -641,3 +652,7 @@ func NewResolver(config Config) (rs Resolvers) {
 }
 
 var ParseNameServer func(servers []string) ([]NameServer, error) // define in config/config.go
+
+// ParseNameServerPolicy parses a nameserver-policy map with the same rules as
+// dns.nameserver-policy. Defined in config/config.go, same as ParseNameServer.
+var ParseNameServerPolicy func(policy *orderedmap.OrderedMap[string, any], adapterName string) ([]Policy, error)
