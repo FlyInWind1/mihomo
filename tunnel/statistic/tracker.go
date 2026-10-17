@@ -109,6 +109,7 @@ func (tt *tcpTracker) UnwrapWriter() (io.Writer, []N.CountFunc) {
 }
 
 func (tt *tcpTracker) Close() error {
+	observeClosed(tt.pushToManager, tt.ID(), tt.Start, tt.UploadTotal.Load(), tt.DownloadTotal.Load(), tt.Chains(), tt.Rule, tt.RulePayload, tt.Metadata)
 	tt.manager.Leave(tt)
 	return tt.Conn.Close()
 }
@@ -203,6 +204,7 @@ func (ut *udpTracker) WriteTo(b []byte, addr net.Addr) (int, error) {
 }
 
 func (ut *udpTracker) Close() error {
+	observeClosed(ut.pushToManager, ut.ID(), ut.Start, ut.UploadTotal.Load(), ut.DownloadTotal.Load(), ut.Chains(), ut.Rule, ut.RulePayload, ut.Metadata)
 	ut.manager.Leave(ut)
 	return ut.PacketConn.Close()
 }

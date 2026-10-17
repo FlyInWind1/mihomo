@@ -181,6 +181,24 @@ type Profile struct {
 	StoreFakeIP   bool
 }
 
+// RecordPush is the optional upload of connection history to a tracker master.
+type RecordPush struct {
+	URL      string
+	Token    string
+	AgentID  string
+	Interval int
+}
+
+// RecordConnections persists per-connection history and optionally pushes it.
+type RecordConnections struct {
+	Enable             bool
+	Store              string
+	RetentionDays      int
+	CheckpointInterval int
+	IgnoreInternal     bool
+	Push               RecordPush
+}
+
 // TLS config
 type TLS struct {
 	Certificate     string
@@ -193,24 +211,25 @@ type TLS struct {
 
 // Config is mihomo config manager
 type Config struct {
-	General       *General
-	Controller    *Controller
-	Experimental  *Experimental
-	IPTables      *IPTables
-	NTP           *NTP
-	DNS           *DNS
-	Hosts         *trie.DomainTrie[resolver.HostValue]
-	Profile       *Profile
-	Rules         []C.Rule
-	SubRules      map[string][]C.Rule
-	Users         []auth.AuthUser
-	Proxies       map[string]C.Proxy
-	Listeners     map[string]C.InboundListener
-	Providers     map[string]P.ProxyProvider
-	RuleProviders map[string]P.RuleProvider
-	Tunnels       []LC.Tunnel
-	Sniffer       *sniffer.Config
-	TLS           *TLS
+	General           *General
+	Controller        *Controller
+	Experimental      *Experimental
+	IPTables          *IPTables
+	NTP               *NTP
+	DNS               *DNS
+	Hosts             *trie.DomainTrie[resolver.HostValue]
+	Profile           *Profile
+	RecordConnections *RecordConnections
+	Rules             []C.Rule
+	SubRules          map[string][]C.Rule
+	Users             []auth.AuthUser
+	Proxies           map[string]C.Proxy
+	Listeners         map[string]C.InboundListener
+	Providers         map[string]P.ProxyProvider
+	RuleProviders     map[string]P.RuleProvider
+	Tunnels           []LC.Tunnel
+	Sniffer           *sniffer.Config
+	TLS               *TLS
 }
 
 type RawCors struct {
@@ -365,6 +384,22 @@ type RawProfile struct {
 	StoreFakeIP   bool `yaml:"store-fake-ip" json:"store-fake-ip"`
 }
 
+type RawRecordPush struct {
+	URL      string `yaml:"url" json:"url"`
+	Token    string `yaml:"token" json:"token"`
+	AgentID  string `yaml:"agent-id" json:"agent-id"`
+	Interval int    `yaml:"interval" json:"interval"`
+}
+
+type RawRecordConnections struct {
+	Enable             bool          `yaml:"enable" json:"enable"`
+	Store              string        `yaml:"store" json:"store"`
+	RetentionDays      int           `yaml:"retention-days" json:"retention-days"`
+	CheckpointInterval int           `yaml:"checkpoint-interval" json:"checkpoint-interval"`
+	IgnoreInternal     bool          `yaml:"ignore-internal" json:"ignore-internal"`
+	Push               RawRecordPush `yaml:"push" json:"push"`
+}
+
 type RawGeoXUrl struct {
 	GeoIp   string `yaml:"geoip" json:"geoip"`
 	Mmdb    string `yaml:"mmdb" json:"mmdb"`
@@ -449,24 +484,25 @@ type RawConfig struct {
 	KeepAliveInterval             int                     `yaml:"keep-alive-interval" json:"keep-alive-interval"`
 	DisableKeepAlive              bool                    `yaml:"disable-keep-alive" json:"disable-keep-alive"`
 
-	ProxyProvider map[string]map[string]any `yaml:"proxy-providers" json:"proxy-providers"`
-	RuleProvider  map[string]map[string]any `yaml:"rule-providers" json:"rule-providers"`
-	Proxy         adapter.ProxyMappings     `yaml:"proxies" json:"proxies"`
-	ProxyGroup    []map[string]any          `yaml:"proxy-groups" json:"proxy-groups"`
-	Rule          []string                  `yaml:"rules" json:"rule"`
-	SubRules      map[string][]string       `yaml:"sub-rules" json:"sub-rules"`
-	Listeners     []map[string]any          `yaml:"listeners" json:"listeners"`
-	Hosts         map[string]any            `yaml:"hosts" json:"hosts"`
-	DNS           RawDNS                    `yaml:"dns" json:"dns"`
-	NTP           RawNTP                    `yaml:"ntp" json:"ntp"`
-	Tun           RawTun                    `yaml:"tun" json:"tun"`
-	TuicServer    RawTuicServer             `yaml:"tuic-server" json:"tuic-server"`
-	IPTables      RawIPTables               `yaml:"iptables" json:"iptables"`
-	Experimental  RawExperimental           `yaml:"experimental" json:"experimental"`
-	Profile       RawProfile                `yaml:"profile" json:"profile"`
-	GeoXUrl       RawGeoXUrl                `yaml:"geox-url" json:"geox-url"`
-	Sniffer       RawSniffer                `yaml:"sniffer" json:"sniffer"`
-	TLS           RawTLS                    `yaml:"tls" json:"tls"`
+	ProxyProvider     map[string]map[string]any `yaml:"proxy-providers" json:"proxy-providers"`
+	RuleProvider      map[string]map[string]any `yaml:"rule-providers" json:"rule-providers"`
+	Proxy             adapter.ProxyMappings     `yaml:"proxies" json:"proxies"`
+	ProxyGroup        []map[string]any          `yaml:"proxy-groups" json:"proxy-groups"`
+	Rule              []string                  `yaml:"rules" json:"rule"`
+	SubRules          map[string][]string       `yaml:"sub-rules" json:"sub-rules"`
+	Listeners         []map[string]any          `yaml:"listeners" json:"listeners"`
+	Hosts             map[string]any            `yaml:"hosts" json:"hosts"`
+	DNS               RawDNS                    `yaml:"dns" json:"dns"`
+	NTP               RawNTP                    `yaml:"ntp" json:"ntp"`
+	Tun               RawTun                    `yaml:"tun" json:"tun"`
+	TuicServer        RawTuicServer             `yaml:"tuic-server" json:"tuic-server"`
+	IPTables          RawIPTables               `yaml:"iptables" json:"iptables"`
+	Experimental      RawExperimental           `yaml:"experimental" json:"experimental"`
+	Profile           RawProfile                `yaml:"profile" json:"profile"`
+	RecordConnections RawRecordConnections      `yaml:"record-connections" json:"record-connections"`
+	GeoXUrl           RawGeoXUrl                `yaml:"geox-url" json:"geox-url"`
+	Sniffer           RawSniffer                `yaml:"sniffer" json:"sniffer"`
+	TLS               RawTLS                    `yaml:"tls" json:"tls"`
 
 	ClashForAndroid RawClashForAndroid `yaml:"clash-for-android" json:"clash-for-android"`
 }
@@ -581,6 +617,16 @@ func DefaultRawConfig() *RawConfig {
 		Profile: RawProfile{
 			StoreSelected: true,
 		},
+		RecordConnections: RawRecordConnections{
+			Enable:             false,
+			Store:              "record-connections.db",
+			RetentionDays:      7,
+			CheckpointInterval: 30,
+			IgnoreInternal:     true,
+			Push: RawRecordPush{
+				Interval: 60,
+			},
+		},
 		GeoXUrl: RawGeoXUrl{
 			Mmdb:    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
 			ASN:     "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb",
@@ -668,6 +714,12 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 		return nil, err
 	}
 	config.Profile = profile
+
+	recordConnections, err := parseRecordConnections(rawCfg)
+	if err != nil {
+		return nil, err
+	}
+	config.RecordConnections = recordConnections
 
 	tlsCfg, err := parseTLS(rawCfg)
 	if err != nil {
@@ -866,6 +918,30 @@ func parseProfile(cfg *RawConfig) (*Profile, error) {
 	return &Profile{
 		StoreSelected: cfg.Profile.StoreSelected,
 		StoreFakeIP:   cfg.Profile.StoreFakeIP,
+	}, nil
+}
+
+func parseRecordConnections(cfg *RawConfig) (*RecordConnections, error) {
+	raw := cfg.RecordConnections
+	if strings.TrimSpace(raw.Push.URL) != "" && strings.TrimSpace(raw.Push.AgentID) == "" {
+		return nil, fmt.Errorf("record-connections.push.agent-id is required when push.url is set")
+	}
+	store := strings.TrimSpace(raw.Store)
+	if store == "" {
+		store = "record-connections.db"
+	}
+	return &RecordConnections{
+		Enable:             raw.Enable,
+		Store:              store,
+		RetentionDays:      raw.RetentionDays,
+		CheckpointInterval: raw.CheckpointInterval,
+		IgnoreInternal:     raw.IgnoreInternal,
+		Push: RecordPush{
+			URL:      strings.TrimSpace(raw.Push.URL),
+			Token:    raw.Push.Token,
+			AgentID:  strings.TrimSpace(raw.Push.AgentID),
+			Interval: raw.Push.Interval,
+		},
 	}, nil
 }
 

@@ -40,6 +40,8 @@ import (
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/ntp/ntp"
 	"github.com/metacubex/mihomo/tunnel"
+	"github.com/metacubex/mihomo/tunnel/statistic"
+	"github.com/metacubex/mihomo/tunnel/statistic/history"
 )
 
 var mux sync.Mutex
@@ -114,6 +116,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	initInnerTcp()
 	loadProvider(cfg.Providers)
 	updateProfile(cfg)
+	updateRecordConnections(cfg)
 	loadProvider(cfg.RuleProviders)
 	runtime.GC()
 	tunnel.OnRunning()
@@ -440,6 +443,25 @@ func updateUsers(users []auth.AuthUser) {
 	if authenticator != nil {
 		log.Infoln("Authentication of local server updated")
 	}
+}
+
+func updateRecordConnections(cfg *config.Config) {
+	rc := cfg.RecordConnections
+	if rc == nil {
+		statistic.ConfigureHistory(history.Settings{})
+		return
+	}
+	statistic.ConfigureHistory(history.Settings{
+		Enable:             rc.Enable,
+		Store:              C.Path.Resolve(rc.Store),
+		RetentionDays:      rc.RetentionDays,
+		CheckpointInterval: time.Duration(rc.CheckpointInterval) * time.Second,
+		IgnoreInternal:     rc.IgnoreInternal,
+		PushURL:            rc.Push.URL,
+		PushToken:          rc.Push.Token,
+		AgentID:            rc.Push.AgentID,
+		PushInterval:       time.Duration(rc.Push.Interval) * time.Second,
+	})
 }
 
 func updateProfile(cfg *config.Config) {

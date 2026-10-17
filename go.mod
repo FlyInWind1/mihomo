@@ -1,6 +1,6 @@
 module github.com/metacubex/mihomo
 
-go 1.20
+go 1.21
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0
@@ -23,6 +23,7 @@ require (
 	github.com/metacubex/edwards25519 v1.2.0
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
+	github.com/metacubex/gvisor v0.0.0-20260922041103-e2cbcd6e7400
 	github.com/metacubex/http v0.1.8
 	github.com/metacubex/jls-quic-go v0.0.0-20260727080412-732f2fc9a34d
 	github.com/metacubex/jls-tls v0.0.0-20260723084315-67adc0e2f796
@@ -45,6 +46,7 @@ require (
 	github.com/metacubex/smux v0.0.0-20260105030934-d0c8756d3141
 	github.com/metacubex/ssh v0.1.0
 	github.com/metacubex/tailscale v0.0.0-20260821153257-ff0ecd818181
+	github.com/metacubex/tailscale-wireguard-go v0.0.0-20260725073821-e61ab99cede2
 	github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c
 	github.com/metacubex/tls v0.1.9
 	github.com/metacubex/utls v1.8.8
@@ -62,6 +64,7 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	go.yaml.in/yaml/v3 v3.0.5
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
+	modernc.org/sqlite v1.34.5
 )
 
 // lastest version compatible with golang1.20
@@ -89,6 +92,7 @@ require (
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/coder/websocket v1.8.12 // indirect
 	github.com/dunglas/httpsfv v1.0.2 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20250325060835-cd0defd64358 // indirect
 	github.com/ericlagergren/polyval v0.0.0-20220411101811-e25bc10ba391 // indirect
 	github.com/ericlagergren/siv v0.0.0-20220507050439-0b757b3aa5f1 // indirect
@@ -103,26 +107,28 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/klauspost/reedsolomon v1.12.3 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/metacubex/ascon v0.1.0 // indirect
-	github.com/metacubex/gvisor v0.0.0-20260922041103-e2cbcd6e7400 // indirect
 	github.com/metacubex/hkdf v0.1.0 // indirect
 	github.com/metacubex/hpke v0.1.0 // indirect
 	github.com/metacubex/jsonv2 v0.0.0-20260721082349-16b4998c8f89 // indirect
 	github.com/metacubex/nftables v0.0.0-20260426003805-208c2c1ba2cb // indirect
 	github.com/metacubex/qpack v0.6.0 // indirect
-	github.com/metacubex/tailscale-wireguard-go v0.0.0-20260725073821-e61ab99cede2 // indirect
 	github.com/metacubex/wazero v0.0.0-20260628025728-9ae6bdcf2a7d // indirect
 	github.com/metacubex/yamux v0.0.0-20250918083631-dd5f17c0be49 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
+	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/pires/go-proxyproto v0.8.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/safchain/ethtool v0.3.0 // indirect
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a // indirect
 	github.com/sina-ghaderi/poly1305 v0.0.0-20220724002748-c5926b03988b // indirect
@@ -145,6 +151,9 @@ require (
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
+	modernc.org/libc v1.55.3 // indirect
+	modernc.org/mathutil v1.6.0 // indirect
+	modernc.org/memory v1.8.0 // indirect
 )
 
 // for https://github.com/golang/protobuf/issues/1704
