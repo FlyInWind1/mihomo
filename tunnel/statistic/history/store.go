@@ -68,6 +68,9 @@ func Configure(st Settings, snapshot func() []Record) {
 		_ = old.db.Close()
 	}
 	if !st.Enable {
+		if old != nil {
+			log.Infoln("[RecordConnections] disabled")
+		}
 		return
 	}
 	if st.Store == "" {
@@ -113,7 +116,21 @@ func Configure(st Settings, snapshot func() []Record) {
 	mu.Lock()
 	current = svc
 	mu.Unlock()
-	log.Infoln("[RecordConnections] recording to %s", st.Store)
+	log.Infoln(
+		"[RecordConnections] recording to %s retention=%dd checkpoint=%s ignore-internal=%v",
+		st.Store,
+		st.RetentionDays,
+		formatDuration(st.CheckpointInterval),
+		st.IgnoreInternal,
+	)
+	if st.PushURL != "" {
+		log.Infoln(
+			"[RecordConnections] push to %s agent=%s interval=%s",
+			st.PushURL,
+			st.AgentID,
+			formatDuration(st.PushInterval),
+		)
+	}
 }
 
 // Observe enqueues one connection when recording is on.
@@ -133,6 +150,17 @@ func Observe(pushToManager bool, rec Record) {
 	case <-svc.ctx.Done():
 		return
 	case svc.in <- rec:
+		if rec.Closed != 0 {
+			log.Debugln(
+				"[RecordConnections] closed %s %s:%s --> %s up=%d down=%d",
+				rec.Network,
+				rec.SourceIP,
+				rec.SourcePort,
+				recordTarget(rec),
+				rec.Upload,
+				rec.Download,
+			)
+		}
 	}
 }
 
@@ -180,8 +208,16 @@ func (s *service) loop() {
 		if len(batch) == 0 {
 			return
 		}
+		var closed int
+		for _, rec := range batch {
+			if rec.Closed != 0 {
+				closed++
+			}
+		}
 		if err := s.upsert(batch); err != nil {
 			log.Warnln("[RecordConnections] write failed: %s", err.Error())
+		} else {
+			log.Debugln("[RecordConnections] wrote %d records (%d closed)", len(batch), closed)
 		}
 		batch = nil
 	}
@@ -201,14 +237,17 @@ func (s *service) loop() {
 			write()
 			close(done)
 		case done := <-s.snap:
-			batch = append(batch, s.takeSnapshot()...)
+			batch = append(batch, s.logSnapshot(s.takeSnapshot())...)
 			write()
 			close(done)
 		case <-checkpointC:
-			batch = append(batch, s.takeSnapshot()...)
+			batch = append(batch, s.logSnapshot(s.takeSnapshot())...)
 		case <-cleanupC:
-			if err := s.cleanup(); err != nil {
+			removed, err := s.cleanup()
+			if err != nil {
 				log.Warnln("[RecordConnections] cleanup failed: %s", err.Error())
+			} else if removed > 0 {
+				log.Debugln("[RecordConnections] removed %d expired records", removed)
 			}
 		}
 	}
@@ -235,6 +274,30 @@ func (s *service) takeSnapshot() []Record {
 		recs[i].AgentID = s.settings.AgentID
 	}
 	return recs
+}
+
+func (s *service) logSnapshot(recs []Record) []Record {
+	if len(recs) > 0 {
+		log.Debugln("[RecordConnections] checkpoint %d live connections", len(recs))
+	}
+	return recs
+}
+
+func recordTarget(rec Record) string {
+	if rec.Host != "" {
+		return rec.Host
+	}
+	if rec.DestinationIP != "" {
+		return rec.DestinationIP
+	}
+	return rec.RemoteDestination
+}
+
+func formatDuration(d time.Duration) string {
+	if d <= 0 {
+		return "off"
+	}
+	return d.String()
 }
 
 // Accept reports whether this connection should be stored.
@@ -406,9 +469,9 @@ func (s *service) upsert(recs []Record) error {
 	return tx.Commit()
 }
 
-func (s *service) cleanup() error {
+func (s *service) cleanup() (int64, error) {
 	if s.settings.RetentionDays < 0 {
-		return nil
+		return 0, nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.settings.RetentionDays).Format(timeLayout)
 	q := `DELETE FROM connections WHERE start < ?`
@@ -423,8 +486,15 @@ func (s *service) cleanup() error {
 	}
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
-	_, err := s.db.Exec(q, cutoff)
-	return err
+	res, err := s.db.Exec(q, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (s *service) pending(limit int) ([]Record, error) {

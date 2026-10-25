@@ -42,22 +42,28 @@ func (s *service) pushOnce() error {
 	if err := s.health(); err != nil {
 		return err
 	}
+	var total int
 	for {
 		recs, err := s.pending(pushBatch)
 		if err != nil {
 			return err
 		}
 		if len(recs) == 0 {
+			if total > 0 {
+				log.Infoln("[RecordConnections] pushed %d records to %s", total, s.settings.PushURL)
+			}
 			return nil
 		}
 		if err = s.post(recs); err != nil {
 			return err
 		}
+		total += len(recs)
 		last := recs[len(recs)-1]
 		if err = s.advance(last.LastUpdated, last.ID); err != nil {
 			return err
 		}
 		if len(recs) < pushBatch {
+			log.Infoln("[RecordConnections] pushed %d records to %s", total, s.settings.PushURL)
 			return nil
 		}
 	}

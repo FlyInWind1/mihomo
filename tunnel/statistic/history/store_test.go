@@ -258,7 +258,7 @@ func TestRetentionKeepsUnsynced(t *testing.T) {
 	fresh := time.Now().Format(timeLayout)
 	Observe(true, Record{ID: "fresh", Start: fresh, LastUpdated: cursor, Closed: 1})
 	Flush()
-	if err := current.cleanup(); err != nil {
+	if _, err := current.cleanup(); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, err := current.load("synced"); err != nil || ok {
