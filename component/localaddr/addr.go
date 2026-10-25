@@ -3,6 +3,7 @@ package localaddr
 import (
 	"net/netip"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -42,6 +43,21 @@ func Set(source string, prefixes []netip.Prefix) {
 	if fn != nil {
 		fn(snapshot)
 	}
+}
+
+// MergedCSV returns the merged prefixes as a comma-separated list for JNI.
+func MergedCSV() string {
+	mu.Lock()
+	snapshot := append([]netip.Prefix(nil), merged...)
+	mu.Unlock()
+	if len(snapshot) == 0 {
+		return ""
+	}
+	parts := make([]string, len(snapshot))
+	for i, prefix := range snapshot {
+		parts[i] = prefix.String()
+	}
+	return strings.Join(parts, ",")
 }
 
 // Notify delivers the current merged set even when no proxy changed, so a tun

@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"github.com/metacubex/mihomo/component/localaddr"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
@@ -9,7 +10,36 @@ import (
 // EnsureTailscaleInbound starts every Tailscale node so peers can connect in
 // without waiting for an outbound dial. start is idempotent, so a later call
 // only brings up nodes added after the tun listener was already up.
-func EnsureTailscaleInbound() {
+// nodes is how many Tailscale nodes were found. failed is how many of those
+// returned an error. nodes == 0 means the config has none.
+func EnsureTailscaleInbound() (nodes, failed int) {
+	forEachTailscale(func(node *Tailscale) {
+		nodes++
+		log.Infoln("[Tailscale](%s) starting for inbound", node.Name())
+		if err := node.StartForInbound(); err != nil {
+			failed++
+			log.Warnln("[Tailscale](%s) start: %v", node.Name(), err)
+		}
+	})
+	return nodes, failed
+}
+
+// LoadCachedTailscaleAddresses reads addresses saved from an earlier netmap.
+// nodes is how many Tailscale proxies are configured. The CSV is empty when
+// none of them has a saved address yet.
+func LoadCachedTailscaleAddresses() (csv string, nodes int) {
+	forEachTailscale(func(node *Tailscale) {
+		nodes++
+		prefixes := node.readCachedAddresses()
+		if len(prefixes) == 0 {
+			return
+		}
+		localaddr.Set(node.Name(), prefixes)
+	})
+	return localaddr.MergedCSV(), nodes
+}
+
+func forEachTailscale(fn func(*Tailscale)) {
 	seen := map[C.ProxyAdapter]struct{}{}
 	var walk func(adapter C.ProxyAdapter)
 	walk = func(adapter C.ProxyAdapter) {
@@ -31,10 +61,7 @@ func EnsureTailscaleInbound() {
 		}
 		seen[adapter] = struct{}{}
 		if node, ok := adapter.(*Tailscale); ok {
-			log.Infoln("[Tailscale](%s) starting for inbound", node.Name())
-			if err := node.StartForInbound(); err != nil {
-				log.Warnln("[Tailscale](%s) start: %v", node.Name(), err)
-			}
+			fn(node)
 			return
 		}
 		group, ok := adapter.(interface{ Proxies() []C.Proxy })

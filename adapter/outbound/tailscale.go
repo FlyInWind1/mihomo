@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -50,6 +52,9 @@ type Tailscale struct {
 	serverStarted bool
 
 	unregisterDNSResolver func()
+
+	loginURLMu   sync.Mutex
+	lastLoginURL string
 
 	// bridge is set only on Android. It hands this node's tailnet packets to
 	// the VPN tun and takes the replies back, because the process cannot own
@@ -178,10 +183,14 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 			return ips, err
 		},
 		UserLogf: func(format string, args ...any) {
-			log.Infoln("[Tailscale](%s) %s", option.Name, fmt.Sprintf(format, args...))
+			msg := fmt.Sprintf(format, args...)
+			log.Infoln("[Tailscale](%s) %s", option.Name, msg)
+			outbound.publishLoginURLFromLog(msg)
 		},
 		Logf: func(format string, args ...any) {
-			log.Debugln("[Tailscale](%s) %s", option.Name, fmt.Sprintf(format, args...))
+			msg := fmt.Sprintf(format, args...)
+			log.Debugln("[Tailscale](%s) %s", option.Name, msg)
+			outbound.publishLoginURLFromLog(msg)
 		},
 	}
 	if runtime.GOOS == "android" {
@@ -203,20 +212,26 @@ func (t *Tailscale) start() error {
 			return
 		}
 		t.serverStarted = true
-		ctx, cancel := context.WithTimeout(t.ctx, 30*time.Second)
-		defer cancel()
-		if err := t.applyPrefs(ctx); err != nil {
-			t.startErr = err
-			t.setBackendInitialized(err)
-			return
-		}
+		// Start loads the on-disk netmap before it returns. Publish that
+		// address before EditPrefs, which waits on the control server.
+		t.publishAddresses()
 		go t.watchBackendState()
+		go t.applyPrefsAsync()
 	})
 	return t.startErr
 }
 
+func (t *Tailscale) applyPrefsAsync() {
+	ctx, cancel := context.WithTimeout(t.ctx, 30*time.Second)
+	defer cancel()
+	if err := t.applyPrefs(ctx); err != nil {
+		log.Warnln("[Tailscale](%s) apply prefs: %v", t.Name(), err)
+	}
+}
+
 // StartForInbound brings the node up so tailnet peers can reach listeners on
-// the host. Dialing does the same work; this is for when the VPN comes up first.
+// the host. Dialing does the same work. On Android the VPN calls this before
+// establish, after socket protection is armed.
 func (t *Tailscale) StartForInbound() error {
 	return t.start()
 }
@@ -251,6 +266,9 @@ func (t *Tailscale) watchBackendState() {
 			return
 		}
 		t.publishAddresses()
+		if n.BrowseToURL != nil {
+			t.publishLoginURL(*n.BrowseToURL)
+		}
 		if n.State == nil {
 			continue
 		}
@@ -266,6 +284,46 @@ func (t *Tailscale) watchBackendState() {
 			}
 		}
 	}
+}
+
+func (t *Tailscale) publishLoginURL(url string) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return
+	}
+	t.loginURLMu.Lock()
+	if t.lastLoginURL == url {
+		t.loginURLMu.Unlock()
+		return
+	}
+	t.lastLoginURL = url
+	t.loginURLMu.Unlock()
+	tailnet.NotifyLoginURL(t.Name(), url)
+}
+
+func (t *Tailscale) publishLoginURLFromLog(msg string) {
+	if url := loginURLFromLog(msg); url != "" {
+		t.publishLoginURL(url)
+	}
+}
+
+func loginURLFromLog(msg string) string {
+	for _, scheme := range []string{"https://", "http://"} {
+		i := strings.Index(msg, scheme)
+		if i < 0 {
+			continue
+		}
+		rest := msg[i:]
+		end := len(rest)
+		for j, r := range rest {
+			if r == ' ' || r == '\n' || r == '\r' || r == ')' {
+				end = j
+				break
+			}
+		}
+		return strings.TrimSpace(rest[:end])
+	}
+	return ""
 }
 
 func (t *Tailscale) publishAddresses() {
@@ -284,6 +342,58 @@ func (t *Tailscale) publishAddresses() {
 		return
 	}
 	t.bridge.SetAddresses(addrs)
+	t.writeCachedAddresses(addrs)
+}
+
+const cachedAddressFile = "cached-addresses"
+
+func (t *Tailscale) writeCachedAddresses(addrs []netip.Addr) {
+	dir := t.option.StateDir
+	if dir == "" || len(addrs) == 0 {
+		return
+	}
+	var text strings.Builder
+	for _, addr := range addrs {
+		bits := 32
+		if addr.Is6() {
+			bits = 128
+		}
+		text.WriteString(netip.PrefixFrom(addr, bits).String())
+		text.WriteByte('\n')
+	}
+	path := filepath.Join(dir, cachedAddressFile)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(text.String()), 0600); err != nil {
+		log.Warnln("[Tailscale](%s) write cached address: %v", t.Name(), err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		log.Warnln("[Tailscale](%s) write cached address: %v", t.Name(), err)
+	}
+}
+
+func (t *Tailscale) readCachedAddresses() []netip.Prefix {
+	dir := t.option.StateDir
+	if dir == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(dir, cachedAddressFile))
+	if err != nil {
+		return nil
+	}
+	var out []netip.Prefix
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(line)
+		if err != nil || !prefix.IsValid() {
+			continue
+		}
+		out = append(out, prefix)
+	}
+	return out
 }
 
 func (t *Tailscale) setBackendInitialized(err error) {

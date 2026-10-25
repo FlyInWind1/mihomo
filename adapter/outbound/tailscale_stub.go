@@ -2,7 +2,10 @@
 
 package outbound
 
-import "fmt"
+import (
+	"fmt"
+	"net/netip"
+)
 
 type Tailscale struct {
 	*Base
@@ -28,3 +31,5 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 }
 
 func (t *Tailscale) StartForInbound() error { return nil }
+
+func (t *Tailscale) readCachedAddresses() []netip.Prefix { return nil }
